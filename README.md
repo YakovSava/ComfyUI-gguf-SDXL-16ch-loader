@@ -15,3 +15,5 @@ Use **`ae.safetensors`** (Flux AE) — it is the correct VAE for 16-channel late
 ## GGUF
 
 Requires [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) extension. Place GGUF files into the `models/unet_gguf` directory.
+
+The GGUF loader outputs only the **MODEL**. Connect CLIP and VAE separately using ComfyUI's built-in **DualCLIPLoader** and **VAELoader** nodes.

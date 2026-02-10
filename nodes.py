@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
 
 import torch
 from comfy import latent_formats
@@ -143,32 +142,18 @@ class Sdxl16ChGGUFLoader:
                     {"tooltip": "GGUF file with quantized UNet weights for a 16ch latent space model."},
                 ),
             },
-            "optional": {
-                "companion_ckpt": (
-                    folder_paths.get_filename_list("checkpoints"),
-                    {"tooltip": "Standard checkpoint to extract CLIP and VAE from."},
-                ),
-            },
         }
 
-    RETURN_TYPES = ("MODEL", "CLIP", "VAE")
-    OUTPUT_TOOLTIPS = (
-        "16ch-patched quantized diffusion model.",
-        "CLIP encoder from companion checkpoint (None if not provided).",
-        "VAE from companion checkpoint (None if not provided).",
-    )
+    RETURN_TYPES = ("MODEL",)
+    OUTPUT_TOOLTIPS = ("16ch-patched quantized diffusion model.",)
     FUNCTION = "load_checkpoint"
     CATEGORY = "loaders"
     DESCRIPTION = (
         "Loads a GGUF-quantized UNet for 16-channel latent space models. "
-        "Optionally loads CLIP and VAE from a companion standard checkpoint."
+        "Connect CLIP and VAE separately via DualCLIPLoader and VAELoader nodes."
     )
 
-    def load_checkpoint(
-        self,
-        gguf_name: str,
-        companion_ckpt: Optional[str] = None,
-    ):
+    def load_checkpoint(self, gguf_name: str):
         from comfy_gguf.loader import gguf_sd_loader
         from comfy_gguf.ops import GGMLOps
 
@@ -180,19 +165,7 @@ class Sdxl16ChGGUFLoader:
             model_options={"custom_operations": GGMLOps},
         )
 
-        clip = None
-        vae = None
-
-        if companion_ckpt is not None:
-            companion_path = folder_paths.get_full_path_or_raise("checkpoints", companion_ckpt)
-            _, clip, vae, _ = comfy.sd.load_checkpoint_guess_config(
-                companion_path,
-                output_vae=True,
-                output_clip=True,
-                embedding_directory=folder_paths.get_folder_paths("embeddings"),
-            )
-
-        return (patch_model_16ch(model), clip, vae)
+        return (patch_model_16ch(model),)
 
 
 class TensorDtypeInfo:
