@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-
+import os
+import sys
+import importlib.util
 import torch
 from comfy import latent_formats
 import folder_paths
@@ -22,7 +24,7 @@ DTYPE_MAP: dict[torch.dtype, str] = {
 }
 
 
-def precision_to_dtype(precision: str) -> Optional[torch.dtype]:
+def precision_to_dtype(precision: str) -> torch.dtype | None:
     return {
         "fp32": torch.float32,
         "fp16": torch.float16,
@@ -35,6 +37,38 @@ def patch_model_16ch(model):
     m.add_object_patch("concat_keys", ())
     m.add_object_patch("latent_format", latent_formats.Flux())
     return m
+
+
+def _load_gguf_unet_node_class():
+    pkg_name = "comfyui_gguf"
+    gguf_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "ComfyUI-GGUF"))
+    nodes_key = f"{pkg_name}.nodes"
+
+    if nodes_key not in sys.modules:
+        pkg = importlib.util.module_from_spec(
+            importlib.util.spec_from_file_location(
+                pkg_name,
+                os.path.join(gguf_dir, "__init__.py"),
+                submodule_search_locations=[gguf_dir],
+            )
+        )
+        sys.modules[pkg_name] = pkg
+
+        for submod in ("dequant", "ops", "loader", "nodes"):
+            full_name = f"{pkg_name}.{submod}"
+            spec = importlib.util.spec_from_file_location(
+                full_name,
+                os.path.join(gguf_dir, f"{submod}.py"),
+            )
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules[full_name] = mod
+            spec.loader.exec_module(mod)
+
+    mappings = sys.modules[nodes_key].NODE_CLASS_MAPPINGS
+    for cls in mappings.values():
+        if callable(getattr(cls, "load_unet", None)):
+            return cls
+    raise RuntimeError(f"UnetLoaderGGUF not found in ComfyUI-GGUF. Available: {list(mappings)}")
 
 
 class Sdxl16ChLoader:
@@ -154,17 +188,8 @@ class Sdxl16ChGGUFLoader:
     )
 
     def load_checkpoint(self, gguf_name: str):
-        from comfy_gguf.loader import gguf_sd_loader
-        from comfy_gguf.ops import GGMLOps
-
-        gguf_path = folder_paths.get_full_path_or_raise("unet_gguf", gguf_name)
-        sd = gguf_sd_loader(gguf_path)
-
-        model = comfy.sd.load_diffusion_model_state_dict(
-            sd,
-            model_options={"custom_operations": GGMLOps},
-        )
-
+        unet_loader_cls = _load_gguf_unet_node_class()
+        (model,) = unet_loader_cls().load_unet(gguf_name)
         return (patch_model_16ch(model),)
 
 
